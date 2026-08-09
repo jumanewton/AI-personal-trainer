@@ -16,6 +16,7 @@ wheels/
 out/
 *.log
 *.csv
+*.json
 !out/.gitkeep
 
 # Label Studio / local app data

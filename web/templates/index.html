@@ -523,7 +523,8 @@ const chartCtx  = document.getElementById("angle-chart").getContext("2d");
 let angleChart  = null;
 
 function buildChart(rows) {
-  const labels = rows.map(r => (r.timestamp_ms / 1000).toFixed(2));
+  const t0 = rows[0]?.timestamp_ms || 0;
+  const labels = rows.map(r => ((r.timestamp_ms - t0) / 1000).toFixed(2));
   const datasets = CHART_ANGLES.map(a => ({
     label: a.label,
     data:  rows.map(r => r[a.key] || 0),
@@ -643,8 +644,6 @@ async function selectSession(name, cardEl) {
   if (cardEl) cardEl.classList.add("active");
 
   document.getElementById("session-select").value = name;
-  document.getElementById("empty-state").style.display = "none";
-  document.getElementById("pose-canvas").style.display = "block";
 
   // Load summary
   const sumRes = await fetch(`/api/summary/${name}`);
@@ -664,7 +663,15 @@ async function selectSession(name, cardEl) {
   const rowsRes = await fetch(`/api/session/${name}`);
   rows = await rowsRes.json();
 
-  if (!rows.length) return;
+  if (!rows.length) {
+    document.getElementById("empty-state").style.display = "flex";
+    document.getElementById("empty-state").querySelector("p").textContent = "This session contains 0 recorded frames (no pose detected).";
+    document.getElementById("pose-canvas").style.display = "none";
+    return;
+  }
+
+  document.getElementById("empty-state").style.display = "none";
+  document.getElementById("pose-canvas").style.display = "block";
 
   // Estimate ms per frame
   if (rows.length > 1)
@@ -734,9 +741,10 @@ function renderFrame(idx) {
   fill.style.width = score + "%";
   fill.style.background = scoreColor(score);
 
-  // Time display
-  const t    = row.timestamp_ms / 1000;
-  const tEnd = rows[rows.length-1].timestamp_ms / 1000;
+  // Time display (relative to session start)
+  const t0   = rows[0].timestamp_ms;
+  const t    = (row.timestamp_ms - t0) / 1000;
+  const tEnd = (rows[rows.length-1].timestamp_ms - t0) / 1000;
   document.getElementById("time-display").textContent =
     `${fmtTime(t)} / ${fmtTime(tEnd)}`;
 

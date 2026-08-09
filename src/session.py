@@ -93,7 +93,10 @@ class SessionRecorder:
         self._t_last = t_s
 
         angle_vals = [round(angles.get(k, 0.0), 2) for k in _ANGLE_KEYS]
-        img_vals   = [round(v, 5) for v in image_lm_flat]
+        if not image_lm_flat or len(image_lm_flat) < 66:
+            img_vals = [""] * 66
+        else:
+            img_vals = [round(v, 5) for v in image_lm_flat[:66]]
 
         row = (
             [frame_idx, timestamp_ms,
@@ -117,6 +120,13 @@ class SessionRecorder:
         self._file.flush()
         self._file.close()
 
+        if self._n_frames == 0:
+            # If 0 frames recorded, clean up empty directory
+            import shutil
+            shutil.rmtree(self._dir, ignore_errors=True)
+            print(f"\n[!] Session cancelled (0 frames recorded). Removed empty directory.")
+            return self._dir
+
         duration_s = (
             round(self._t_last - self._t_start, 1)
             if (self._t_start is not None and self._t_last is not None)
@@ -137,7 +147,7 @@ class SessionRecorder:
         summary_path = self._dir / "summary.json"
         summary_path.write_text(json.dumps(summary, indent=2))
 
-        print(f"\n✅ Session saved → {self._dir}")
+        print(f"\n[OK] Session saved -> {self._dir}")
         print(f"   Exercise : {self._exercise}")
         print(f"   Reps     : {self._max_reps}")
         print(f"   Avg form : {avg_form:.0f}%")

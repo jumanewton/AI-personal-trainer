@@ -15,11 +15,21 @@ Controls
 """
 from __future__ import annotations
 
-import argparse
+import os
 import sys
+
+# Suppress MediaPipe/TF C++ log noise before importing mediapipe
+os.environ["GLOG_minloglevel"] = "2"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+import argparse
 import time
 from pathlib import Path
 from urllib.request import urlretrieve
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import cv2
 import mediapipe as mp
@@ -83,7 +93,22 @@ def _parse_args() -> argparse.Namespace:
                    help="Root directory for session output folders.")
     p.add_argument("--max_frames", type=int, default=0,
                    help="Stop after N frames (0 = unlimited).")
+    p.add_argument("--no-gui", action="store_true",
+                   help="Disable OpenCV GUI windows and run headless.")
     return p.parse_args()
+
+
+def _can_show_gui() -> bool:
+    if os.environ.get("DISPLAY") is None and os.name != "nt":
+        return False
+    try:
+        ret = cv2.namedWindow("__cv_test__", cv2.WINDOW_NORMAL)
+        if ret is not None:
+            cv2.destroyWindow("__cv_test__")
+            return True
+        return False
+    except Exception:
+        return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -119,94 +144,133 @@ def main() -> None:
     # Exercise FSM — None means we're in selection mode
     fsm = None if args.exercise == "auto" else make_exercise(args.exercise)
 
-    # Default idle state (shown while selecting exercise)
-    idle_state = ExerciseState(exercise="Select exercise", phase="—")
+    use_gui = not args.no_gui and _can_show_gui()
 
-    print("Press Q to quit, R to reset reps.")
-    if args.exercise == "auto":
-        print("Press S=Squat  P=Push-up  L=Lunge  J=Jumping Jack to begin.")
+    # If headless and exercise is 'auto', prompt in terminal to pick exercise
+    if fsm is None and not use_gui:
+        print("\n=== Exercise Selection (Headless / Terminal Mode) ===")
+        print("  1) Squat [S]")
+        print("  2) Push-up [P]")
+        print("  3) Lunge [L]")
+        print("  4) Jumping Jack [J]")
+        try:
+            choice = input("Select exercise (1-4 or S/P/L/J): ").strip().lower()
+            key_map = {
+                "1": "squat", "s": "squat", "squat": "squat",
+                "2": "pushup", "p": "pushup", "pushup": "pushup",
+                "3": "lunge", "l": "lunge", "lunge": "lunge",
+                "4": "jumpingjack", "j": "jumpingjack", "jumpingjack": "jumpingjack",
+            }
+            ex_name = key_map.get(choice, "squat")
+            print(f"Selected exercise: {ex_name.upper()}\n")
+            fsm = make_exercise(ex_name)
+        except (KeyboardInterrupt, EOFError):
+            print("\nSelection cancelled. Exiting.")
+            sys.exit(0)
+
+    if not use_gui:
+        print("OpenCV GUI unavailable; running headless. Press Ctrl+C in terminal to stop.")
+    else:
+        print("Press Q to quit, R to reset reps.")
+        if args.exercise == "auto":
+            print("Press S=Squat  P=Push-up  L=Lunge  J=Jumping Jack to begin.")
 
     # ── Main loop ─────────────────────────────────────────────────────────────
-    with PoseLandmarker.create_from_options(pose_opts) as detector:
-        frame_idx = 0
-        t0        = time.monotonic()
+    try:
+        with PoseLandmarker.create_from_options(pose_opts) as detector:
+            frame_idx = 0
+            t0        = time.monotonic()
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            img_h, img_w = frame.shape[:2]
-
-            # ── Selection screen ──────────────────────────────────────────────
-            if fsm is None:
-                frame = draw_selection_screen(frame)
-                cv2.imshow("AI Personal Trainer", frame)
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord("q"):
+            while True:
+                ret, frame = cap.read()
+                if not ret:
                     break
-                elif key == ord("s"):
-                    fsm = make_exercise("squat")
-                elif key == ord("p"):
-                    fsm = make_exercise("pushup")
-                elif key == ord("l"):
-                    fsm = make_exercise("lunge")
-                elif key == ord("j"):
-                    fsm = make_exercise("jumpingjack")
-                continue
 
-            # ── Pose detection ────────────────────────────────────────────────
-            rgb      = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_img   = Image(image_format=ImageFormat.SRGB, data=rgb)
-            ts_ms    = int(time.time() * 1000)
-            results  = detector.detect_for_video(mp_img, ts_ms)
+                img_h, img_w = frame.shape[:2]
 
-            state  = ExerciseState(exercise=fsm.name, phase="no person detected")
-            angles: dict[str, float] = {}
-            image_lm = None
+                # ── Selection screen (GUI mode) ───────────────────────────────────
+                if fsm is None:
+                    frame = draw_selection_screen(frame)
+                    if use_gui:
+                        cv2.imshow("AI Personal Trainer", frame)
+                        key = cv2.waitKey(1) & 0xFF
+                        if key in (ord("q"), ord("Q")):
+                            break
+                        elif key in (ord("s"), ord("S")):
+                            fsm = make_exercise("squat")
+                        elif key in (ord("p"), ord("P")):
+                            fsm = make_exercise("pushup")
+                        elif key in (ord("l"), ord("L")):
+                            fsm = make_exercise("lunge")
+                        elif key in (ord("j"), ord("J")):
+                            fsm = make_exercise("jumpingjack")
+                        continue
+                    if args.max_frames and frame_idx >= args.max_frames:
+                        break
+                    frame_idx += 1
+                    continue
 
-            if results.pose_landmarks and results.pose_world_landmarks:
-                image_lm  = results.pose_landmarks[0]
-                raw_world = world_lm_to_list(results.pose_world_landmarks[0])
+                # ── Pose detection ────────────────────────────────────────────────
+                rgb      = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_img   = Image(image_format=ImageFormat.SRGB, data=rgb)
+                ts_ms    = int(time.time() * 1000)
+                results  = detector.detect_for_video(mp_img, ts_ms)
 
-                # Smooth in world space
-                t_sec    = ts_ms / 1000.0
-                smooth_w = smoother.smooth(raw_world, t_sec)
+                state    = ExerciseState(exercise=fsm.name, phase="no person detected")
+                angles: dict[str, float] = {}
+                image_lm = None
+                img_flat = []
 
-                # Compute angles from smoothed world landmarks
-                angles   = compute_all_angles(smooth_w)
+                if results.pose_landmarks and results.pose_world_landmarks:
+                    image_lm  = results.pose_landmarks[0]
+                    raw_world = world_lm_to_list(results.pose_world_landmarks[0])
 
-                # Update exercise FSM
-                state    = fsm.update(angles, smooth_w)
+                    # Smooth in world space
+                    t_sec    = ts_ms / 1000.0
+                    smooth_w = smoother.smooth(raw_world, t_sec)
 
-                # Record frame
-                img_flat = image_lm_to_flat(image_lm)
+                    # Compute angles from smoothed world landmarks
+                    angles   = compute_all_angles(smooth_w)
+
+                    # Update exercise FSM
+                    state    = fsm.update(angles, smooth_w)
+                    img_flat = image_lm_to_flat(image_lm)
+
+                # Record frame (always record so session timeline is accurate)
                 session.record_frame(frame_idx, ts_ms, img_flat, angles, state)
 
-            # ── FPS ───────────────────────────────────────────────────────────
-            elapsed = time.monotonic() - t0
-            fps     = frame_idx / max(elapsed, 1e-3)
+                # ── FPS ───────────────────────────────────────────────────────────
+                elapsed = time.monotonic() - t0
+                fps     = frame_idx / max(elapsed, 1e-3)
 
-            # ── Render HUD ────────────────────────────────────────────────────
-            frame = hud.render(frame, state, angles, fps, image_lm)
-            cv2.imshow("AI Personal Trainer", frame)
+                # ── Render HUD ────────────────────────────────────────────────────
+                frame = hud.render(frame, state, angles, fps, image_lm)
+                if use_gui:
+                    cv2.imshow("AI Personal Trainer", frame)
 
-            frame_idx += 1
-            if args.max_frames and frame_idx >= args.max_frames:
-                break
+                frame_idx += 1
+                if args.max_frames and frame_idx >= args.max_frames:
+                    break
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
-                break
-            elif key == ord("r") and fsm is not None:
-                fsm.reset()
-                smoother.reset()
-                print("Rep counter reset.")
-
-    # ── Teardown ──────────────────────────────────────────────────────────────
-    cap.release()
-    cv2.destroyAllWindows()
-    session.close()
+                if use_gui:
+                    key = cv2.waitKey(1) & 0xFF
+                    if key in (ord("q"), ord("Q")):
+                        print("\nExiting recording gracefully...")
+                        break
+                    elif key in (ord("r"), ord("R")) and fsm is not None:
+                        fsm.reset()
+                        smoother.reset()
+                        print("Rep counter reset.")
+                else:
+                    time.sleep(0.01)
+    except KeyboardInterrupt:
+        print("\nSession stopped by user (KeyboardInterrupt).")
+    finally:
+        # ── Teardown ──────────────────────────────────────────────────────────────
+        cap.release()
+        if use_gui:
+            cv2.destroyAllWindows()
+        session.close()
 
 
 if __name__ == "__main__":
