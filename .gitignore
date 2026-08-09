@@ -1,10 +1,32 @@
 # Python-generated files
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
 build/
 dist/
 wheels/
 *.egg-info
 
 # Virtual environments
-.venv
+.venv/
+.env
+.venv*
+
+# Project outputs and local data
+out/
+*.log
+*.csv
+!out/.gitkeep
+
+# Label Studio / local app data
+label_studio_data/
+*.sqlite3
+*.db
+
+# IDE / editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
