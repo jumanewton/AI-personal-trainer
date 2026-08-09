@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Personal Trainer — Session Replay</title>
+  <meta name="description" content="Review and replay your AI Personal Trainer workout sessions with animated skeleton, angle charts, and form analysis." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & Tokens ──────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #09090f;
+      --surface:   #111118;
+      --surface2:  #17171f;
+      --border:    #2a2a38;
+      --accent:    #00d4ff;
+      --accent2:   #7c3aed;
+      --good:      #22c55e;
+      --warn:      #f59e0b;
+      --bad:       #ef4444;
+      --text:      #e8e8f0;
+      --text-dim:  #6b6b80;
+      --radius:    14px;
+      --panel-gap: 16px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    #app {
+      display: grid;
+      grid-template-rows: 56px 1fr 110px;
+      height: 100vh;
+    }
+
+    /* ── Topbar ──────────────────────────────────────────────────────────── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 0 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+    #topbar .logo {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    #topbar .logo span { color: var(--text); }
+
+    #session-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 6px 12px;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+      min-width: 220px;
+      transition: border-color 0.2s;
+    }
+    #session-select:focus { border-color: var(--accent); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .badge .val { color: var(--text); font-weight: 700; }
+    .badge.good .val { color: var(--good); }
+    .badge.warn .val { color: var(--warn); }
+
+    .spacer { flex: 1; }
+
+    /* ── Main area ───────────────────────────────────────────────────────── */
+    #main {
+      display: grid;
+      grid-template-columns: 280px 1fr 300px;
+      gap: var(--panel-gap);
+      padding: var(--panel-gap);
+      overflow: hidden;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-header {
+      padding: 12px 16px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-body { flex: 1; overflow: hidden; padding: 12px 16px; }
+
+    /* ── Session list (left panel) ───────────────────────────────────────── */
+    #session-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    #session-list::-webkit-scrollbar { width: 4px; }
+    #session-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .session-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .session-card:hover { border-color: var(--accent); }
+    .session-card.active { border-color: var(--accent); background: rgba(0, 212, 255, 0.06); }
+    .session-card .s-name {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .session-card .s-exercise {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .session-card .s-meta {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .session-card .s-meta .highlight { color: var(--accent); font-weight: 600; }
+
+    /* ── Skeleton canvas (centre) ────────────────────────────────────────── */
+    #skeleton-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(ellipse at 50% 60%,
+        rgba(0, 212, 255, 0.04) 0%,
+        var(--bg) 70%);
+    }
+    #pose-canvas {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 8px;
+    }
+
+    /* Phase + rep overlay */
+    #canvas-overlay {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .ov-chip {
+      background: rgba(9, 9, 15, 0.80);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      backdrop-filter: blur(6px);
+    }
+    .ov-chip.phase { color: #fbbf24; }
+    .ov-chip.reps  { color: var(--accent); }
+
+    /* ── Right panel — stats + chart ─────────────────────────────────────── */
+    #right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: var(--panel-gap);
+      overflow: hidden;
+    }
+
+    /* Stats grid */
+    #stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+    }
+    .stat-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .stat-box .s-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+    .stat-box .s-value { font-size: 22px; font-weight: 800; color: var(--text); line-height: 1; }
+    .stat-box .s-unit  { font-size: 11px; color: var(--text-dim); font-weight: 400; }
+
+    /* Form score bar */
+    #form-bar-wrap {
+      padding: 0 12px 12px;
+    }
+    .form-label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; color: var(--text-dim); }
+    .form-label .form-val { font-weight: 700; font-size: 14px; }
+    .form-track {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .form-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.15s ease, background 0.3s;
+    }
+
+    /* Angle chart */
+    #chart-panel {
+      flex: 1;
+      overflow: hidden;
+    }
+    #chart-panel .panel-body {
+      padding: 8px 12px 12px;
+      position: relative;
+    }
+    #angle-chart { width: 100% !important; }
+
+    /* Empty state */
+    #empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 12px;
+      color: var(--text-dim);
+    }
+    #empty-state .icon { font-size: 48px; }
+    #empty-state p { font-size: 14px; text-align: center; max-width: 200px; line-height: 1.5; }
+
+    /* ── Timeline ────────────────────────────────────────────────────────── */
+    #timeline-bar {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .ctrl-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 6px 12px;
+      font-family: inherit;
+      font-size: 16px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      line-height: 1;
+    }
+    .ctrl-btn:hover { border-color: var(--accent); background: rgba(0,212,255,0.06); }
+    .ctrl-btn.active { background: var(--accent); border-color: var(--accent); color: #000; }
+
+    #time-display {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dim);
+      min-width: 80px;
+      text-align: center;
+    }
+
+    #scrubber-wrap {
+      flex: 1;
+      position: relative;
+      height: 40px;
+      display: flex;
+      align-items: center;
+    }
+    #scrubber {
+      width: 100%;
+      appearance: none;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    #scrubber::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(0,212,255,0.5);
+    }
+    /* Rep tick marks */
+    #rep-ticks {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+    }
+    .rep-tick {
+      position: absolute;
+      top: 50%;
+      transform: translateX(-50%) translateY(-50%);
+      width: 2px;
+      height: 12px;
+      background: var(--good);
+      border-radius: 1px;
+      opacity: 0.7;
+    }
+
+    .speed-group { display: flex; gap: 4px; }
+    .speed-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-dim);
+      padding: 4px 8px;
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .speed-btn.active { color: var(--accent); border-color: var(--accent); }
+    .speed-btn:hover  { border-color: var(--accent); }
+
+    /* ── Loading / No-data states ────────────────────────────────────────── */
+    .no-sessions { text-align: center; padding: 24px; color: var(--text-dim); line-height: 1.7; }
+    .no-sessions b { color: var(--accent); }
+
+    /* ── Scrollbar styles ────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Animations ──────────────────────────────────────────────────────── */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+    .loading { animation: pulse 1.2s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Topbar ─────────────────────────────────────────────────────────── -->
+  <header id="topbar">
+    <div class="logo">🏋️ AI<span> Personal Trainer</span></div>
+
+    <span class="badge">
+      Session:
+      <select id="session-select"><option value="">— choose session —</option></select>
+    </span>
+
+    <div class="spacer"></div>
+
+    <span class="badge" id="badge-exercise"><span class="val">—</span></span>
+    <span class="badge good" id="badge-reps">Reps <span class="val" id="hdr-reps">—</span></span>
+    <span class="badge" id="badge-form">Avg form <span class="val" id="hdr-form">—</span></span>
+    <span class="badge" id="badge-dur">Duration <span class="val" id="hdr-dur">—</span></span>
+  </header>
+
+  <!-- ── Main ──────────────────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- Left: session list -->
+    <div class="panel" style="grid-row:1">
+      <div class="panel-header">Sessions</div>
+      <div id="session-list">
+        <div class="no-sessions loading">Loading sessions…</div>
+      </div>
+    </div>
+
+    <!-- Centre: skeleton canvas -->
+    <div class="panel" id="skeleton-wrap">
+      <div id="canvas-overlay">
+        <div class="ov-chip phase" id="phase-chip">—</div>
+        <div class="ov-chip reps"  id="rep-chip">0 reps</div>
+      </div>
+      <div id="empty-state">
+        <div class="icon">🦾</div>
+        <p>Select a session on the left to start the replay</p>
+      </div>
+      <canvas id="pose-canvas" style="display:none"></canvas>
+    </div>
+
+    <!-- Right: stats + chart -->
+    <div id="right-panel">
+
+      <!-- Stats row -->
+      <div class="panel">
+        <div class="panel-header">Session Stats</div>
+        <div id="stats-grid">
+          <div class="stat-box">
+            <div class="s-label">Total Reps</div>
+            <div class="s-value" id="stat-reps">—</div>
+          </div>
+          <div class="stat-box">
+            <div class="s-label">Duration</div>
+            <div class="s-value" id="stat-dur">—<span class="s-unit">s</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="s-label">Avg Form</div>
+            <div class="s-value" id="stat-form">—<span class="s-unit">%</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="s-label">Frames</div>
+            <div class="s-value" id="stat-frames">—</div>
+          </div>
+        </div>
+        <div id="form-bar-wrap">
+          <div class="form-label">
+            <span>Form score (live frame)</span>
+            <span class="form-val" id="form-pct">—%</span>
+          </div>
+          <div class="form-track">
+            <div class="form-fill" id="form-fill" style="width:0%;background:var(--good)"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Angle chart -->
+      <div class="panel chart-panel" id="chart-panel" style="flex:1">
+        <div class="panel-header">
+          Joint Angles
+          <span style="font-size:10px;color:var(--text-dim);text-transform:none;letter-spacing:0">degrees over time</span>
+        </div>
+        <div class="panel-body">
+          <canvas id="angle-chart"></canvas>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Timeline ──────────────────────────────────────────────────────── -->
+  <div id="timeline-bar">
+    <button class="ctrl-btn" id="btn-prev" title="Prev frame">◂</button>
+    <button class="ctrl-btn" id="btn-play" title="Play / Pause">▶</button>
+    <button class="ctrl-btn" id="btn-next" title="Next frame">▸</button>
+    <div id="time-display">0:00 / 0:00</div>
+
+    <div id="scrubber-wrap">
+      <input type="range" id="scrubber" min="0" max="0" value="0" />
+      <div id="rep-ticks"></div>
+    </div>
+
+    <div class="speed-group">
+      <button class="speed-btn" data-speed="0.25">¼×</button>
+      <button class="speed-btn active" data-speed="1">1×</button>
+      <button class="speed-btn" data-speed="2">2×</button>
+      <button class="speed-btn" data-speed="4">4×</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/pose.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let rows       = [];
+let frameIdx   = 0;
+let playing    = false;
+let playSpeed  = 1;
+let rafHandle  = null;
+let lastRafTs  = null;
+let msPerFrame = 33;   // estimated from data; updated after load
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart.js
+// ─────────────────────────────────────────────────────────────────────────────
+const CHART_ANGLES = [
+  { key: "angle_left_knee",  label: "Knee L",  color: "#00d4ff" },
+  { key: "angle_right_knee", label: "Knee R",  color: "#7c3aed" },
+  { key: "angle_left_hip",   label: "Hip L",   color: "#22c55e" },
+  { key: "angle_trunk_lean", label: "Trunk",   color: "#f59e0b" },
+];
+
+const chartCtx  = document.getElementById("angle-chart").getContext("2d");
+let angleChart  = null;
+
+function buildChart(rows) {
+  const labels = rows.map(r => (r.timestamp_ms / 1000).toFixed(2));
+  const datasets = CHART_ANGLES.map(a => ({
+    label: a.label,
+    data:  rows.map(r => r[a.key] || 0),
+    borderColor: a.color,
+    backgroundColor: a.color + "18",
+    borderWidth: 1.5,
+    pointRadius: 0,
+    tension: 0.35,
+    fill: false,
+  }));
+
+  if (angleChart) angleChart.destroy();
+  angleChart = new Chart(chartCtx, {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: "#8888a0", font: { size: 11, family: "Outfit" }, boxWidth: 12 },
+        },
+        tooltip: {
+          backgroundColor: "#17171f",
+          borderColor: "#2a2a38",
+          borderWidth: 1,
+          titleColor: "#e8e8f0",
+          bodyColor: "#8888a0",
+          titleFont: { family: "Outfit" },
+          bodyFont: { family: "Outfit" },
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}°`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#6b6b80", font: { size: 10 }, maxTicksLimit: 8 },
+          grid:  { color: "#1e1e28" },
+        },
+        y: {
+          min: 0, max: 200,
+          ticks: { color: "#6b6b80", font: { size: 10 },
+                   callback: v => v + "°" },
+          grid:  { color: "#1e1e28" },
+        },
+      },
+    },
+  });
+}
+
+// Vertical cursor line on chart
+function updateChartCursor(idx) {
+  if (!angleChart) return;
+  angleChart.data.datasets.forEach(ds => { ds.pointRadius = 0; });
+  if (rows.length > 0) {
+    // Show a thin vertical annotation via custom plugin (simple approach)
+    angleChart.options.plugins.annotation = undefined; // skip
+  }
+  angleChart.update("none");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session loading
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadSessions() {
+  const res  = await fetch("/api/sessions");
+  const list = await res.json();
+
+  const container = document.getElementById("session-list");
+  const sel       = document.getElementById("session-select");
+
+  if (!list.length) {
+    container.innerHTML = `<div class="no-sessions">No sessions found.<br>
+      Run <b>inference.py</b> first to record a session.</div>`;
+    return;
+  }
+
+  container.innerHTML = "";
+  sel.innerHTML = `<option value="">— choose —</option>`;
+
+  list.forEach(s => {
+    const name = s.name || "";
+    const ex   = s.exercise || "Unknown";
+    const reps = s.reps   != null ? s.reps   : "—";
+    const form = s.avg_form != null ? Math.round(s.avg_form) + "%" : "—";
+    const dur  = s.duration_s != null ? s.duration_s + "s" : "—";
+
+    // Sidebar card
+    const card = document.createElement("div");
+    card.className = "session-card";
+    card.dataset.name = name;
+    card.innerHTML = `
+      <div class="s-name">${name.replace("session_", "").replace("_", " ")}</div>
+      <div class="s-exercise">${ex}</div>
+      <div class="s-meta">
+        <span><span class="highlight">${reps}</span> reps</span>
+        <span><span class="highlight">${form}</span> form</span>
+        <span>${dur}</span>
+      </div>`;
+    card.addEventListener("click", () => selectSession(name, card));
+    container.appendChild(card);
+
+    // Header dropdown
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.text  = `${ex} — ${name.replace("session_", "")}`;
+    sel.appendChild(opt);
+  });
+}
+
+async function selectSession(name, cardEl) {
+  // Mark card active
+  document.querySelectorAll(".session-card").forEach(c => c.classList.remove("active"));
+  if (cardEl) cardEl.classList.add("active");
+
+  document.getElementById("session-select").value = name;
+  document.getElementById("empty-state").style.display = "none";
+  document.getElementById("pose-canvas").style.display = "block";
+
+  // Load summary
+  const sumRes = await fetch(`/api/summary/${name}`);
+  if (sumRes.ok) {
+    const s = await sumRes.json();
+    document.getElementById("stat-reps").textContent   = s.reps   ?? "—";
+    document.getElementById("stat-dur").innerHTML      = `${s.duration_s ?? "—"}<span class="s-unit">s</span>`;
+    document.getElementById("stat-form").innerHTML     = `${Math.round(s.avg_form ?? 0)}<span class="s-unit">%</span>`;
+    document.getElementById("stat-frames").textContent = s.frames ?? "—";
+    document.getElementById("hdr-reps").textContent    = s.reps ?? "—";
+    document.getElementById("hdr-form").textContent    = Math.round(s.avg_form ?? 0) + "%";
+    document.getElementById("hdr-dur").textContent     = s.duration_s + "s";
+    document.getElementById("badge-exercise").querySelector(".val").textContent = s.exercise ?? "—";
+  }
+
+  // Load rows
+  const rowsRes = await fetch(`/api/session/${name}`);
+  rows = await rowsRes.json();
+
+  if (!rows.length) return;
+
+  // Estimate ms per frame
+  if (rows.length > 1)
+    msPerFrame = (rows[rows.length-1].timestamp_ms - rows[0].timestamp_ms) / (rows.length - 1);
+
+  // Build chart
+  buildChart(rows);
+
+  // Setup scrubber
+  const scrubber = document.getElementById("scrubber");
+  scrubber.max   = rows.length - 1;
+  scrubber.value = 0;
+
+  // Rep tick marks
+  drawRepTicks(rows);
+
+  // Header totals
+  document.getElementById("hdr-reps").textContent = rows[rows.length-1].rep || 0;
+
+  // Render first frame
+  frameIdx = 0;
+  renderFrame(0);
+}
+
+function drawRepTicks(rows) {
+  const wrap = document.getElementById("rep-ticks");
+  wrap.innerHTML = "";
+  const total = rows.length;
+  let lastRep = 0;
+  rows.forEach((r, i) => {
+    const rep = parseInt(r.rep) || 0;
+    if (rep > lastRep) {
+      lastRep = rep;
+      const pct = (i / total) * 100;
+      const tick = document.createElement("div");
+      tick.className = "rep-tick";
+      tick.style.left = pct + "%";
+      tick.title = `Rep ${rep}`;
+      wrap.appendChild(tick);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Frame rendering
+// ─────────────────────────────────────────────────────────────────────────────
+function renderFrame(idx) {
+  if (!rows.length) return;
+  idx = Math.max(0, Math.min(idx, rows.length - 1));
+  frameIdx = idx;
+
+  const row = rows[idx];
+  const canvas = document.getElementById("pose-canvas");
+
+  // Draw skeleton
+  drawPose(canvas, row);
+
+  // Update HUD chips
+  document.getElementById("phase-chip").textContent =
+    (row.phase || "—").toUpperCase().replace("_", " ");
+  document.getElementById("rep-chip").textContent = `${row.rep || 0} reps`;
+
+  // Form bar
+  const score = parseFloat(row.form_score) || 0;
+  document.getElementById("form-pct").textContent = score.toFixed(0) + "%";
+  const fill = document.getElementById("form-fill");
+  fill.style.width = score + "%";
+  fill.style.background = scoreColor(score);
+
+  // Time display
+  const t    = row.timestamp_ms / 1000;
+  const tEnd = rows[rows.length-1].timestamp_ms / 1000;
+  document.getElementById("time-display").textContent =
+    `${fmtTime(t)} / ${fmtTime(tEnd)}`;
+
+  // Scrubber
+  document.getElementById("scrubber").value = idx;
+
+  // Stats update for header
+  document.getElementById("hdr-reps").textContent = row.rep || 0;
+}
+
+function scoreColor(score) {
+  const t = score / 100;
+  const r = Math.round((1-t)*220 + t*34);
+  const g = Math.round((1-t)*40  + t*197);
+  const b = Math.round((1-t)*40  + t*94);
+  return `rgb(${r},${g},${b})`;
+}
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2,"0")}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Playback
+// ─────────────────────────────────────────────────────────────────────────────
+function togglePlay() {
+  playing = !playing;
+  const btn = document.getElementById("btn-play");
+  btn.textContent = playing ? "⏸" : "▶";
+  btn.classList.toggle("active", playing);
+  if (playing) {
+    lastRafTs = null;
+    rafHandle = requestAnimationFrame(playTick);
+  } else {
+    cancelAnimationFrame(rafHandle);
+  }
+}
+
+function playTick(ts) {
+  if (!playing) return;
+  if (lastRafTs === null) { lastRafTs = ts; }
+
+  const elapsed = (ts - lastRafTs);
+  const frameDuration = msPerFrame / playSpeed;
+
+  if (elapsed >= frameDuration) {
+    lastRafTs = ts;
+    if (frameIdx >= rows.length - 1) {
+      frameIdx = 0;   // loop
+    } else {
+      frameIdx++;
+    }
+    renderFrame(frameIdx);
+  }
+  rafHandle = requestAnimationFrame(playTick);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Controls wiring
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById("btn-play").addEventListener("click", togglePlay);
+document.getElementById("btn-prev").addEventListener("click", () => {
+  if (playing) togglePlay();
+  renderFrame(frameIdx - 1);
+});
+document.getElementById("btn-next").addEventListener("click", () => {
+  if (playing) togglePlay();
+  renderFrame(frameIdx + 1);
+});
+
+document.getElementById("scrubber").addEventListener("input", e => {
+  if (playing) togglePlay();
+  renderFrame(parseInt(e.target.value));
+});
+
+document.getElementById("session-select").addEventListener("change", e => {
+  if (e.target.value) {
+    const card = document.querySelector(`.session-card[data-name="${e.target.value}"]`);
+    selectSession(e.target.value, card);
+  }
+});
+
+document.querySelectorAll(".speed-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".speed-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    playSpeed = parseFloat(btn.dataset.speed);
+  });
+});
+
+// Keyboard shortcuts
+document.addEventListener("keydown", e => {
+  if (e.key === " ")           { e.preventDefault(); togglePlay(); }
+  else if (e.key === "ArrowRight") renderFrame(frameIdx + 1);
+  else if (e.key === "ArrowLeft")  renderFrame(frameIdx - 1);
+  else if (e.key === "ArrowRight" && e.shiftKey) renderFrame(frameIdx + 10);
+  else if (e.key === "ArrowLeft"  && e.shiftKey) renderFrame(frameIdx - 10);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+loadSessions();
+</script>
+</body>
+</html>
