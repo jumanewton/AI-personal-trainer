@@ -48,6 +48,10 @@ uv pip install --python .\.venv-labelstudio\Scripts\python.exe label-studio
 
 The main project still uses the regular `.venv` managed by `uv sync`.
 
+## Auto Mode
+
+`--exercise auto` opens the on-screen exercise picker. If you do not press a key, it starts Squat automatically after a short timeout so the session does not sit there looking frozen.
+
 ## CLI Reference
 
 ```

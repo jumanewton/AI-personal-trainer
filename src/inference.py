@@ -61,6 +61,7 @@ _MODEL_URL = (
     "pose_landmarker_full/float16/latest/pose_landmarker_full.task"
 )
 _MODEL_CACHE = Path.home() / ".cache" / "vision" / "pose_landmarker_full.task"
+_GUI_AUTO_START_TIMEOUT_S = 5.0
 
 
 def _resolve_model(path: str | None) -> str:
@@ -68,7 +69,7 @@ def _resolve_model(path: str | None) -> str:
         return path
     _MODEL_CACHE.parent.mkdir(parents=True, exist_ok=True)
     if not _MODEL_CACHE.exists():
-        print("Downloading pose_landmarker_full model …", flush=True)
+        print("Downloading pose_landmarker_full model...", flush=True)
         urlretrieve(_MODEL_URL, _MODEL_CACHE)
         print("Download complete.", flush=True)
     return str(_MODEL_CACHE)
@@ -145,6 +146,7 @@ def main() -> None:
     fsm = None if args.exercise == "auto" else make_exercise(args.exercise)
 
     use_gui = not args.no_gui and _can_show_gui()
+    selection_started = time.monotonic()
 
     # If headless and exercise is 'auto', prompt in terminal to pick exercise
     if fsm is None and not use_gui:
@@ -174,12 +176,14 @@ def main() -> None:
         print("Press Q to quit, R to reset reps.")
         if args.exercise == "auto":
             print("Press S=Squat  P=Push-up  L=Lunge  J=Jumping Jack to begin.")
+            print(f"If you do nothing, Squat starts automatically after {_GUI_AUTO_START_TIMEOUT_S:.0f}s.")
 
     # ── Main loop ─────────────────────────────────────────────────────────────
     try:
         with PoseLandmarker.create_from_options(pose_opts) as detector:
             frame_idx = 0
             t0        = time.monotonic()
+            last_ts   = 0
 
             while True:
                 ret, frame = cap.read()
@@ -204,6 +208,9 @@ def main() -> None:
                             fsm = make_exercise("lunge")
                         elif key in (ord("j"), ord("J")):
                             fsm = make_exercise("jumpingjack")
+                        elif time.monotonic() - selection_started >= _GUI_AUTO_START_TIMEOUT_S:
+                            print("Auto-starting Squat after selection timeout.")
+                            fsm = make_exercise("squat")
                         continue
                     if args.max_frames and frame_idx >= args.max_frames:
                         break
@@ -214,6 +221,9 @@ def main() -> None:
                 rgb      = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 mp_img   = Image(image_format=ImageFormat.SRGB, data=rgb)
                 ts_ms    = int(time.time() * 1000)
+                if ts_ms <= last_ts:
+                    ts_ms = last_ts + 1
+                last_ts  = ts_ms
                 results  = detector.detect_for_video(mp_img, ts_ms)
 
                 state    = ExerciseState(exercise=fsm.name, phase="no person detected")

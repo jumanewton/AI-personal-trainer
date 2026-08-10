@@ -177,7 +177,7 @@ class SquatFSM:
                 self._rep += 1
                 self._phase = "standing"
                 if not self._rep_issues:
-                    self._feedback = ["✓ Perfect rep!"]
+                    self._feedback = ["[OK] Perfect rep!"]
                 else:
                     self._feedback = self._rep_issues[-3:]
                 self._rep_issues = []
@@ -293,7 +293,7 @@ class PushupFSM:
             if avg > self.STRAIGHT_ANGLE:
                 self._rep += 1
                 self._phase = "top"
-                self._feedback = ["✓ Great rep!"] if not self._rep_issues else self._rep_issues[-3:]
+                self._feedback = ["[OK] Great rep!"] if not self._rep_issues else self._rep_issues[-3:]
                 self._rep_issues = []
 
         score = _form_score(live_issues) if self._phase in ("descending", "bottom", "ascending") else 100.0
@@ -396,7 +396,7 @@ class LungeFSM:
             if avg > self.STAND_ANGLE:
                 self._rep += 1
                 self._phase = "standing"
-                self._feedback = ["✓ Good lunge!"] if not self._rep_issues else self._rep_issues[-3:]
+                self._feedback = ["[OK] Good lunge!"] if not self._rep_issues else self._rep_issues[-3:]
                 self._rep_issues = []
 
         score = _form_score(live_issues) if self._phase in ("descending", "bottom", "ascending") else 100.0
@@ -440,7 +440,7 @@ class JumpingJackFSM:
         elif self._phase == "open" and avg_abd < self.CLOSED_ANGLE:
             self._phase = "closed"
             self._rep  += 1
-            self._feedback = [f"Rep {self._rep} ✓"]
+            self._feedback = [f"Rep {self._rep} [OK]"]
 
         feedback = self._feedback[-2:]
         return ExerciseState(self.name, self._phase, self._rep, 100.0, feedback, [])

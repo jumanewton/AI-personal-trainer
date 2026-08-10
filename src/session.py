@@ -145,7 +145,7 @@ class SessionRecorder:
             "frames":      self._n_frames,
         }
         summary_path = self._dir / "summary.json"
-        summary_path.write_text(json.dumps(summary, indent=2))
+        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
         print(f"\n[OK] Session saved -> {self._dir}")
         print(f"   Exercise : {self._exercise}")

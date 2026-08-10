@@ -44,7 +44,7 @@ def list_sessions():
             summary = {}
             if summary_path.exists():
                 try:
-                    summary = json.loads(summary_path.read_text())
+                    summary = json.loads(summary_path.read_text(encoding="utf-8"))
                 except Exception:
                     pass
             sessions.append({"name": d.name, **summary})
@@ -79,10 +79,10 @@ def get_summary(name: str):
     summary_path = OUT_ROOT / name / "summary.json"
     if not summary_path.exists():
         return jsonify({"error": "summary not found"}), 404
-    return jsonify(json.loads(summary_path.read_text()))
+    return jsonify(json.loads(summary_path.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":
-    print("🏋️  AI Personal Trainer — Replay Viewer")
+    print("[*] AI Personal Trainer -- Replay Viewer")
     print("   Open http://localhost:5000 in your browser")
     app.run(debug=False, port=5000)

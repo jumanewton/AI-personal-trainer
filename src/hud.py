@@ -291,7 +291,7 @@ def _draw_panel(
     for label, val in angle_items:
         y += 20
         _put(frame, label, cx, y, 0.46, C_TEXT_DIM)
-        val_str = f"{val:.0f}\u00b0"
+        val_str = f"{val:.0f} deg"
         _put(frame, val_str, cx + cw - len(val_str) * 9, y, 0.48, C_TEXT_MAIN)
 
     # ── Divider ──────────────────────────────────────────────────────────
@@ -304,7 +304,7 @@ def _draw_panel(
         _put(frame, "FEEDBACK", cx, y, 0.44, C_TEXT_DIM)
         for msg in feedback[:3]:
             y += 20
-            is_pos = msg.startswith("✓")
+            is_pos = msg.startswith("[OK]")
             color  = C_GOOD if is_pos else C_WARN
             prefix = "" if is_pos else "! "
             # Wrap long text
