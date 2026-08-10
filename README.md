@@ -35,6 +35,19 @@ uv run python web/app.py
 # → open http://localhost:5000
 ```
 
+## Label Studio
+
+Label Studio is not part of the trainer runtime. Keep it in a separate Python 3.12 environment so its dependency chain stays isolated from the main app:
+
+```powershell
+uv venv .venv-labelstudio --python 3.12
+& .\.venv-labelstudio\Scripts\Activate.ps1
+uv pip install --python .\.venv-labelstudio\Scripts\python.exe label-studio
+& .\.venv-labelstudio\Scripts\label-studio.exe
+```
+
+The main project still uses the regular `.venv` managed by `uv sync`.
+
 ## CLI Reference
 
 ```
